@@ -8,8 +8,6 @@ import com.lottery.game.core.exception.LotteryException;
 import com.lottery.game.core.exception.LotteryExceptionType;
 import com.lottery.game.user.UserModel;
 import com.lottery.game.user.UserService;
-import com.lottery.game.user.prize.UserPrizeModel;
-import com.lottery.game.user.prize.UserPrizeService;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
@@ -19,7 +17,6 @@ import java.util.*;
 public class LotteryProcess {
     private static final LinkedHashMap<String, Double> prizes;
     private final UserService userService;
-    private final UserPrizeService userPrizeService;
 
     static {
         prizes = new LinkedHashMap<>();
@@ -30,71 +27,62 @@ public class LotteryProcess {
         prizes.put("E", 0.25);
     }
 
-    public LotteryProcess(UserService userService, UserPrizeService userPrizeService) {
+    public LotteryProcess(UserService userService) {
         this.userService = userService;
-        this.userPrizeService = userPrizeService;
     }
 
     public void lottery(UUID userId) {
-        UserPrizeModel userPrize = null;
+        UserModel user = null;
         try {
-            userPrize = userPrizeService.get(userId);
-            UserModel user = userService.get(userId);
-            LocalDate today = DateUtil.today();
+            user = userService.get(userId);
             if (user != null) {
-                int participationCount = incrementParticipationCount(userPrize, userId);
-                if (participationCount <= 3) {
-                    String prize = givePrize();
-                    if (userPrize == null) {
-                        userPrize = new UserPrizeModel();
-                    }
-                    userPrize.setId(userId);
-                    userPrize.setToday(today);
-                    userPrize.setPrizes(createPrize(userPrize, today.toString(), prize));
-                    userPrizeService.save(userPrize);
-                } else {
-                    decrementParticipationCount(userPrize, userId);
+                int participation = incrementParticipationCount(user);
+                if (participation != -1) {
+                    user.setPrizes(createPrize(user, givePrize()));
+                    userService.save(user);
                 }
             } else {
                 throw new LotteryException(LotteryExceptionType.USER_NOT_EXIST_EXCEPTION);
             }
-        } catch (LotteryException ex) {
-            decrementParticipationCount(userPrize, userId);
-            throw ex;
         } catch (Exception ex) {
-            decrementParticipationCount(userPrize, userId);
-            throw new LotteryException(LotteryExceptionType.LOTTERY_EXECUTION_EXCEPTION, ex);
+            decrementParticipationCount(user);
+            if (!(ex instanceof LotteryException)) {
+                throw new LotteryException(LotteryExceptionType.LOTTERY_EXECUTION_EXCEPTION, ex);
+            } else {
+                throw ex;
+            }
         }
     }
 
-    private synchronized int incrementParticipationCount(UserPrizeModel userPrize, UUID userId) {
+    private synchronized int incrementParticipationCount(UserModel user) {
+        int result = -1;
         try {
-            if (userPrize == null) {
-                userPrize = new UserPrizeModel();
-                userPrize.setId(userId);
-            }
             LocalDate today = DateUtil.today();
             int currentParticipation = 0;
-            LocalDate current = userPrize.getToday();
+            LocalDate current = user.getToday();
             if ((current != null) && today.isEqual(current)) {
-                currentParticipation = userPrize.getParticipate();
+                currentParticipation = user.getParticipate();
             }
-            int participation = currentParticipation + 1;
-            userPrize.setParticipate(participation);
-            userPrize.setToday(today);
-            userPrizeService.save(userPrize);
-            return participation;
+            if (currentParticipation < 3) {
+                result = currentParticipation + 1;
+                user.setParticipate(result);
+                user.setToday(today);
+                userService.save(user);
+            }
+            return result;
         } catch (Exception ex) {
             throw new LotteryException(LotteryExceptionType.INCREMENT_EXCEPTION, ex.getCause());
         }
     }
 
-    private synchronized void decrementParticipationCount(UserPrizeModel userPrize, UUID userId) {
+    private synchronized void decrementParticipationCount(UserModel user) {
         try {
-            if (userPrize != null) {
-                int participationCount = (userPrize.getParticipate() - 1);
-                userPrize.setParticipate(Math.max(participationCount, 0));
-                userPrizeService.save(userPrize);
+            if (user != null) {
+                int participation = user.getParticipate();
+                if (participation > 0 && participation <= 3) {
+                    user.setParticipate((participation - 1));
+                    userService.save(user);
+                }
             }
         } catch (Exception ex) {
             throw new LotteryException(LotteryExceptionType.DECREMENT_EXCEPTION, ex.getCause());
@@ -117,18 +105,19 @@ public class LotteryProcess {
         return null;
     }
 
-    private String createPrize(UserPrizeModel userPrize, String today, String prize) {
+    private String createPrize(UserModel user, String prize) {
         ObjectMapper objectMapper = new ObjectMapper();
         try {
-            String str = userPrize.getPrizes();
+            String json = user.getPrizes();
             Map<String, LinkedList<String>> histories;
-            if (str != null && !str.isBlank()) {
+            if (json != null && !json.isBlank()) {
                 TypeFactory typeFactory = objectMapper.getTypeFactory();
                 MapType mapType = typeFactory.constructMapType(HashMap.class, String.class, LinkedList.class);
-                histories = objectMapper.readValue(str, mapType);
+                histories = objectMapper.readValue(json, mapType);
             } else {
                 histories = new HashMap<>();
             }
+            String today = user.getToday().toString();
             LinkedList<String> prizes = histories.get(today);
             if (prizes == null) prizes = new LinkedList<>();
             prizes.add(prize);

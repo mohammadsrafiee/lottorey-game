@@ -5,6 +5,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.springframework.data.redis.core.RedisHash;
 
+import java.time.LocalDate;
 import java.util.UUID;
 
 @Data
@@ -13,4 +14,7 @@ import java.util.UUID;
 @RedisHash("User")
 public class UserModel {
     private UUID id;
+    private LocalDate today;
+    private int participate;
+    private String prizes;
 }

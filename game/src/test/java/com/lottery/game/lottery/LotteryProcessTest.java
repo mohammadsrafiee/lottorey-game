@@ -1,8 +1,8 @@
 package com.lottery.game.lottery;
 
+import com.lottery.game.core.DateUtil;
 import com.lottery.game.user.UserModel;
 import com.lottery.game.user.UserService;
-import com.lottery.game.user.prize.UserPrizeService;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,8 +21,6 @@ class LotteryProcessTest {
     @Autowired
     private UserService userService;
     @Autowired
-    private UserPrizeService userPrizeService;
-    @Autowired
     private RedisTemplate<String, String> redisTemplate;
 
     @Test
@@ -32,7 +30,7 @@ class LotteryProcessTest {
                     connection.flushAll();
                     return null;
                 });
-        userService.save(new UserModel(UUID.randomUUID()));
+        userService.save(new UserModel(UUID.randomUUID(), DateUtil.today(), 0, null));
         List<UserModel> users = userService.load();
         users.forEach(user -> {
             for (int index = 0; index < 10; ++index) {
@@ -40,7 +38,7 @@ class LotteryProcessTest {
             }
         });
         users.forEach(user -> {
-            Assertions.assertNotEquals(null, userPrizeService.get(user.getId()));
+            Assertions.assertNotEquals(null, userService.get(user.getId()));
         });
     }
 
